@@ -5,6 +5,7 @@
 #include "logging.h"
 #include "glm/glm.hpp"
 #include "glm/gtc/type_ptr.hpp"
+#include <vector>
 
 constexpr auto VERT_CODE = R"(#version 300 es
 precision mediump float;
@@ -36,6 +37,8 @@ void main() {
     frag_color = texture(tex, tex_coords);
 }
 )";
+
+constexpr uint8_t WHITE[] = {255, 255, 255, 255};
 
 Renderer::Renderer(android_app *app) {
     display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -157,9 +160,7 @@ Renderer::Renderer(android_app *app) {
     projection_location = glGetUniformLocation(program, "projection");
     model_location = glGetUniformLocation(program, "model");
 
-    texture = std::make_unique<Texture>(app->activity->assetManager, "android_robot.png");
-
-    LOGI("texture is %dx%d", texture->get_width(), texture->get_height());
+    white = std::make_unique<Texture>(1, 1, WHITE);
 }
 
 Renderer::~Renderer(){
@@ -173,7 +174,7 @@ Renderer::~Renderer(){
     eglTerminate(display);
 }
 
-void Renderer::do_frame() {
+void Renderer::do_frame(const std::vector<DrawCommand> &cmds) {
     int width, height;
     eglQuerySurface(display, surface, EGL_WIDTH, &width);
     eglQuerySurface(display, surface, EGL_HEIGHT, &height);
@@ -191,14 +192,17 @@ void Renderer::do_frame() {
 
     glUseProgram(program);
     glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
-    glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture->get_id());
 
     glBindVertexArray(vao);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    glActiveTexture(GL_TEXTURE0);
+
+    for (const auto &cmd: cmds){
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(cmd.transformation));
+        glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : white->get_id());
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
+
 
     // updates display
     auto res = eglSwapBuffers(display, surface);
