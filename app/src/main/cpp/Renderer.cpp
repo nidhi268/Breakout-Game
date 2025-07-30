@@ -10,23 +10,30 @@ constexpr auto VERT_CODE = R"(#version 300 es
 precision mediump float;
 
 layout (location = 0) in vec2 a_pos;
+layout (location = 1) in vec2 a_tex_coords;
+
+out vec2 tex_coords;
 
 uniform mat4 projection;
 uniform mat4 model;
 
 void main() {
     gl_Position = projection * model * vec4(a_pos, 0.0, 1.0);
+    tex_coords = a_tex_coords;
 }
 )";
 
 constexpr auto FRAG_CODE = R"(#version 300 es
 precision mediump float;
 
-uniform vec3 color;
+in vec2 tex_coords;
+
+uniform sampler2D tex;
+
 out vec4 frag_color;
 
 void main() {
-    frag_color = vec4(color , 1.0);
+    frag_color = texture(tex, tex_coords);
 }
 )";
 
@@ -70,15 +77,23 @@ Renderer::Renderer(android_app *app) {
     LOGI("EGL initialization complete.");
 
     glClearColor(1.f,1.f,0.f,1.f);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    float vertices[] = {
-            -.5f, .5f,
-            -.5f, -.5f,
-            .5f, -.5f,
-            .5f, .5f,
+
+    struct Vertex {
+        glm::vec2 position;
+        glm::vec2 tex_coords;
     };
 
-    uint32_t indices[] = {0,1, 2, 0, 2, 3};
+   Vertex vertices[] = {
+           {{-.5f, .5f}, {0.f, 0.f}},
+           {{-.5f, -.5f}, {0.f, 1.f}},
+           {{.5f, -.5f}, {1.f, 1.f}},
+           {{.5f, .5f}, {1.f, 0.f}},
+    };
+
+    uint32_t indices[] = {0, 1, 2, 0, 2, 3};
 
     glGenBuffers(1, &ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
@@ -92,8 +107,13 @@ Renderer::Renderer(android_app *app) {
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          (void *) offsetof(Vertex, position));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          (void *) offsetof(Vertex, tex_coords));
 
     auto compile_shader = [](GLenum type, const char *src){
         GLuint shader = glCreateShader(type);
@@ -132,9 +152,14 @@ Renderer::Renderer(android_app *app) {
 
     glUseProgram(program);
     glUniform3f(glGetUniformLocation(program, "color"), 1.f, 1.f, 1.f);
+    glUniform1i(glGetUniformLocation(program, "tex"), 0);
 
     projection_location = glGetUniformLocation(program, "projection");
     model_location = glGetUniformLocation(program, "model");
+
+    texture = std::make_unique<Texture>(app->activity->assetManager, "android_robot.png");
+
+    LOGI("texture is %dx%d", texture->get_width(), texture->get_height());
 }
 
 Renderer::~Renderer(){
@@ -162,14 +187,14 @@ void Renderer::do_frame() {
     //sets projection matrix type
     glm::mat4 projection = glm::ortho(-1.f, 1.f, -inv_aspect, inv_aspect);
 
-    static float angle = 0.f;
-    angle += 0.001f;
     glm::mat4 model{1.f};
-    model = glm::rotate(model, angle, {0.f, 0.f, 1.f});
 
     glUseProgram(program);
     glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
     glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture->get_id());
 
     glBindVertexArray(vao);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);

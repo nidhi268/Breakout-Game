@@ -1,6 +1,10 @@
 #pragma once
+
+#include <memory>
 #include <GLES/egl.h>
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+
+#include "Texture.h"
 
 class Renderer {
 public:
@@ -8,6 +12,7 @@ public:
     ~Renderer();
 
     void do_frame();
+
 private:
     EGLDisplay display;
     EGLConfig config;
@@ -15,6 +20,8 @@ private:
     EGLContext context;
 
     GLuint vao{}, vbo{}, ebo{};
-    GLuint program{};
+    GLuint program;
     GLint projection_location, model_location;
+
+    std::unique_ptr<Texture> texture;
 };
