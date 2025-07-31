@@ -38,11 +38,12 @@ precision mediump float;
 in vec2 tex_coords;
 
 uniform sampler2D tex;
+uniform vec4 color;
 
 out vec4 frag_color;
 
 void main() {
-    frag_color = texture(tex, tex_coords);
+    frag_color = color * texture(tex, tex_coords);
 }
 )";
 
@@ -169,6 +170,7 @@ Renderer::Renderer(android_app *app) {
     projview_location = glGetUniformLocation(program, "projview");
     model_location = glGetUniformLocation(program, "model");
     custom_tex_coords_location = glGetUniformLocation(program, "custom_tex_coords");
+    color_location = glGetUniformLocation(program, "color");
 
     white = std::make_unique<Texture>(1, 1, WHITE);
 
@@ -304,6 +306,7 @@ void Renderer::do_frame(const RenderData &data) {
 
     // where openGl should start drawing from - 0,0 = top left to full width & height
     glViewport(0, 0, width, height);
+    glClearColor(data.background_color.r, data.background_color.g, data.background_color.b, 1.f);
     // clears screen - to yellow a set in glClearColor
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -346,6 +349,7 @@ void Renderer::do_frame(const RenderData &data) {
     glUniform2fv(custom_tex_coords_location, 2, glm::value_ptr(default_tex_coords[0]));
     for (const auto &cmd: data.draw_cmds){
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(cmd.transformation));
+        glUniform4fv(color_location, 1, glm::value_ptr(cmd.color));
         glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : white->get_id());
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
