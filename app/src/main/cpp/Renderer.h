@@ -7,6 +7,8 @@
 #include "Texture.h"
 #include "glm/glm.hpp"
 #include "glm/gtc/type_ptr.hpp"
+#include "stb_truetype.h"
+#include "stb_rect_pack.h"
 
 struct DrawCommand {
     glm::mat4 transformation;
@@ -36,4 +38,13 @@ private:
     int width, height;
     glm::mat4 projection;
     std::unique_ptr<Texture> white;
+
+    struct Font {
+        bool loaded{};
+        float size;
+        std::unique_ptr<Texture> texture;
+
+        stbtt_fontinfo info;
+        stbtt_packedchar chardata[96];
+    } font{};
 };

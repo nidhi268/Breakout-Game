@@ -7,6 +7,12 @@
 #include "glm/gtc/type_ptr.hpp"
 #include <vector>
 
+#define STB_RECT_PACK_IMPLEMENTATION
+#define STB_TRUETYPE_IMPLEMENTATION
+
+#include "stb_rect_pack.h"
+#include "stb_truetype.h"
+
 constexpr auto VERT_CODE = R"(#version 300 es
 precision mediump float;
 
@@ -79,7 +85,7 @@ Renderer::Renderer(android_app *app) {
 
     LOGI("EGL initialization complete.");
 
-    glClearColor(1.f,1.f,0.f,1.f);
+    glClearColor(0.f,0.f,0.f,0.f);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -98,6 +104,9 @@ Renderer::Renderer(android_app *app) {
 
     uint32_t indices[] = {0, 1, 2, 0, 2, 3};
 
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
     glGenBuffers(1, &ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof indices, indices, GL_STATIC_DRAW);
@@ -106,9 +115,6 @@ Renderer::Renderer(android_app *app) {
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
-
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
@@ -156,18 +162,72 @@ Renderer::Renderer(android_app *app) {
     glUseProgram(program);
     glUniform3f(glGetUniformLocation(program, "color"), 1.f, 1.f, 1.f);
     glUniform1i(glGetUniformLocation(program, "tex"), 0);
+    glActiveTexture(GL_TEXTURE0);
 
     projection_location = glGetUniformLocation(program, "projection");
     model_location = glGetUniformLocation(program, "model");
 
     white = std::make_unique<Texture>(1, 1, WHITE);
+
+    auto asset = AAssetManager_open(app->activity->assetManager, "font.ttf", AASSET_MODE_BUFFER);
+    if(!asset){
+        LOGE("Failed to load font.ttf");
+        return;
+    }
+    auto buffer = (const uint8_t *) AAsset_getBuffer(asset);
+
+    if(!buffer){
+        LOGE("Failed to load font.ttf");
+        return;
+    }
+
+    if(!stbtt_InitFont(&font.info, buffer, 0)){
+        LOGE("Failed to initialise font");
+        return;
+    }
+
+    constexpr auto TEX_SIZE = 1024;
+    auto pixels = std::make_unique<uint8_t[]>(TEX_SIZE * TEX_SIZE);
+
+    stbtt_pack_context pack_context;
+    if (!stbtt_PackBegin(&pack_context, pixels.get(), TEX_SIZE, TEX_SIZE, 0, 1, nullptr)){
+        LOGE("Failed tp start packing");
+        return;
+    }
+
+    font.size = 256.f;
+    stbtt_pack_range range{
+        font.size,
+        32,
+        nullptr,
+        96,
+        font.chardata,
+    };
+
+    if (!stbtt_PackFontRanges(&pack_context, buffer, 0, &range, 1)){
+        LOGE("Failed to pack font ranges");
+        return;
+    }
+
+    stbtt_PackEnd(&pack_context);
+
+    auto tex_data = std::make_unique<uint8_t[]>(TEX_SIZE * TEX_SIZE * 4);
+    for (size_t i = 0; i < TEX_SIZE * TEX_SIZE; i++){
+        tex_data[4 * i + 0] = 255;
+        tex_data[4 * i + 1] = 255;
+        tex_data[4 * i + 2] = 255;
+        tex_data[4 * i + 3] = pixels[i];
+    }
+
+    font.texture = std::make_unique<Texture>(TEX_SIZE, TEX_SIZE, tex_data.get());
+    font.loaded = true;
 }
 
 Renderer::~Renderer(){
     glDeleteProgram(program);
 
+    glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &vao);
 
     eglDestroyContext(display, context);
     eglDestroySurface(display, surface);
@@ -186,17 +246,11 @@ void Renderer::do_frame(const std::vector<DrawCommand> &cmds) {
     float inv_aspect = (float) height/(float) width;
     //sets projection matrix type
     projection = glm::ortho(-1.f, 1.f, -inv_aspect, inv_aspect);
-
-    glUseProgram(program);
     glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
-
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glActiveTexture(GL_TEXTURE0);
 
     for (const auto &cmd: cmds){
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(cmd.transformation));
-        glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : white->get_id());
+        glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : font.texture->get_id());
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 
