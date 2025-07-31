@@ -6,13 +6,28 @@
 
 #include "Texture.h"
 #include "glm/glm.hpp"
-#include "glm/gtc/type_ptr.hpp"
 #include "stb_truetype.h"
-#include "stb_rect_pack.h"
 
 struct DrawCommand {
     glm::mat4 transformation;
     Texture *texture;
+};
+
+enum class Align {
+    Left,
+    Center,
+    Right,
+    Top = Right,
+    Bottom = Left,
+};
+
+struct TextCommand {
+    std::string str{};
+    glm::vec2 position{};
+    float size = 1.f;
+    glm::vec4 color{1.f};
+
+    Align align_x = Align::Center, align_y = Align::Center;
 };
 
 class Renderer {
@@ -20,7 +35,7 @@ public:
     explicit Renderer(android_app *app);
     ~Renderer();
 
-    void do_frame(const std::vector<DrawCommand> &cmds);
+    void do_frame(const std::vector<DrawCommand> &cmds, const std::vector<TextCommand> &text_cmds);
 
     glm::ivec2 get_size() const {return {width, height};}
     glm::mat4 get_projection() const {return projection;}
@@ -33,7 +48,7 @@ private:
 
     GLuint vao{}, vbo{}, ebo{};
     GLuint program;
-    GLint projection_location, model_location;
+    GLint projection_location, model_location, custom_tex_coords_location;
 
     int width, height;
     glm::mat4 projection;

@@ -23,10 +23,11 @@ out vec2 tex_coords;
 
 uniform mat4 projection;
 uniform mat4 model;
+uniform vec2 custom_tex_coords[2];
 
 void main() {
     gl_Position = projection * model * vec4(a_pos, 0.0, 1.0);
-    tex_coords = a_tex_coords;
+    tex_coords = a_tex_coords * custom_tex_coords[1] + (1.0 - a_tex_coords) * custom_tex_coords[0];
 }
 )";
 
@@ -166,6 +167,7 @@ Renderer::Renderer(android_app *app) {
 
     projection_location = glGetUniformLocation(program, "projection");
     model_location = glGetUniformLocation(program, "model");
+    custom_tex_coords_location = glGetUniformLocation(program, "custom_tex_coords");
 
     white = std::make_unique<Texture>(1, 1, WHITE);
 
@@ -234,7 +236,68 @@ Renderer::~Renderer(){
     eglTerminate(display);
 }
 
-void Renderer::do_frame(const std::vector<DrawCommand> &cmds) {
+void Renderer::do_frame(const std::vector<DrawCommand> &cmds, const std::vector<TextCommand> &text_cmds) {
+    auto draw_char = [&](unsigned char c, float text_size, glm::vec2 position,
+                        glm::vec4 color, glm::vec2 &cursor_pos){
+        if (c <= 32 || c > 127){
+            switch(c){
+                case '\n':
+                    cursor_pos.y -= text_size * .8f, cursor_pos.x = 0.f;
+                    break;
+                case ' ':
+                    cursor_pos.x += text_size / 3.f;
+                    break;
+                default:
+                    break;
+            }
+            return;
+        }
+
+        auto data = font.chardata[c - 32];
+
+        auto start = glm::vec2{data.xoff, data.yoff} / font.size * text_size;
+        auto end = glm::vec2{data.xoff2, data.yoff2} / font.size * text_size;
+
+        auto avg_pos = (start + end) / 2.f;
+        avg_pos.y *= -1.f;
+
+        auto T = glm::translate(glm::mat4(1.f), glm::vec3(cursor_pos + position + avg_pos, 0.f));
+        auto S = glm::scale(glm::mat4(1.f), glm::vec3(end - start, 1.f));
+
+        auto tex_size = glm::vec2(font.texture->get_width(), font.texture->get_height());
+        glm::vec2 tex_coords[2] =
+                {glm::vec2{data.x0, data.y0} / tex_size, glm::vec2{data.x1, data.y1} / tex_size};
+
+        glUniform2fv(custom_tex_coords_location, 2, glm::value_ptr(tex_coords[0]));
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(T * S));
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        cursor_pos.x += data.xadvance / font.size * text_size;
+    };
+
+    auto get_text_size = [&](float text_size, const std::string &str){
+        glm::vec2 size{0.f, text_size / 2.f};
+        for (auto c: str){
+            if (c <= 32){
+                switch (c){
+                    case '\n':
+                        size.y += text_size * .8f / 2.f;
+                        break;
+                    case ' ':
+                        size.x += text_size / 3.f;
+                        break;
+                    default:
+                        break;
+                }
+            } else{
+                auto data = font.chardata[c - 32];
+                size.x += data.xadvance / font.size * text_size;
+            }
+        }
+
+        return size;
+    };
+
     eglQuerySurface(display, surface, EGL_WIDTH, &width);
     eglQuerySurface(display, surface, EGL_HEIGHT, &height);
 
@@ -243,14 +306,45 @@ void Renderer::do_frame(const std::vector<DrawCommand> &cmds) {
     // clears screen - to yellow a set in glClearColor
     glClear(GL_COLOR_BUFFER_BIT);
 
+    if (font.loaded){
+        glBindTexture(GL_TEXTURE_2D, font.texture->get_id());
+        for (const auto &text : text_cmds){
+            auto size = get_text_size(text.size, text.str);
+            glm::vec2 cursor_pos{};
+
+            Align aligns[] = {text.align_x, text.align_y};
+            for (int i = 0; i < 2; i++){
+                auto align = aligns[i];
+                float s = size[i], &p = cursor_pos[i];
+
+                switch (align) {
+                    case Align::Left:
+                        p = 0.f;
+                        break;
+                    case Align::Center:
+                        p = -s / 2.f;
+                    case Align::Right:
+                        p = -s;
+                        break;
+                }
+            }
+
+            for (auto c: text.str){
+                draw_char(c, text.size, text.position, text.color, cursor_pos);
+            }
+        }
+    }
+
     float inv_aspect = (float) height/(float) width;
     //sets projection matrix type
     projection = glm::ortho(-1.f, 1.f, -inv_aspect, inv_aspect);
     glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
 
+    glm::vec2 default_tex_coords[2] = {{0.f, 0.f}, {1.f, 1.f}};
+    glUniform2fv(custom_tex_coords_location, 2, glm::value_ptr(default_tex_coords[0]));
     for (const auto &cmd: cmds){
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(cmd.transformation));
-        glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : font.texture->get_id());
+        glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : white->get_id());
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 
