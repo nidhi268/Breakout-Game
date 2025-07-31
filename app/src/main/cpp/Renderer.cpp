@@ -175,7 +175,6 @@ Renderer::~Renderer(){
 }
 
 void Renderer::do_frame(const std::vector<DrawCommand> &cmds) {
-    int width, height;
     eglQuerySurface(display, surface, EGL_WIDTH, &width);
     eglQuerySurface(display, surface, EGL_HEIGHT, &height);
 
@@ -184,11 +183,9 @@ void Renderer::do_frame(const std::vector<DrawCommand> &cmds) {
     // clears screen - to yellow a set in glClearColor
     glClear(GL_COLOR_BUFFER_BIT);
 
-    float inv_aspect = (float)height/(float)width;
+    float inv_aspect = (float) height/(float) width;
     //sets projection matrix type
-    glm::mat4 projection = glm::ortho(-1.f, 1.f, -inv_aspect, inv_aspect);
-
-    glm::mat4 model{1.f};
+    projection = glm::ortho(-1.f, 1.f, -inv_aspect, inv_aspect);
 
     glUseProgram(program);
     glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));

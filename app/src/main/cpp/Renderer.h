@@ -20,6 +20,9 @@ public:
 
     void do_frame(const std::vector<DrawCommand> &cmds);
 
+    glm::ivec2 get_size() const {return {width, height};}
+    glm::mat4 get_projection() const {return projection;}
+
 private:
     EGLDisplay display;
     EGLConfig config;
@@ -30,5 +33,7 @@ private:
     GLuint program;
     GLint projection_location, model_location;
 
+    int width, height;
+    glm::mat4 projection;
     std::unique_ptr<Texture> white;
 };
