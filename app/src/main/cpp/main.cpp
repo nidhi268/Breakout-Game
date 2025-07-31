@@ -60,11 +60,26 @@ extern "C" {
                     GameActivityMotionEvent *motion_event = &input_buffer->motionEvents[i];
                     if (motion_event->pointerCount > 0){
                         int32_t masked_action = motion_event->action & AMOTION_EVENT_ACTION_MASK;
-                        if(masked_action == AMOTION_EVENT_ACTION_DOWN){
-                            float x = GameActivityPointerAxes_getX(&motion_event->pointers[0]);
-                            float y = GameActivityPointerAxes_getY(&motion_event->pointers[0]);
-                            game->touch_event({x, y});
+                        float x = GameActivityPointerAxes_getX(&motion_event->pointers[0]);
+                        float y = GameActivityPointerAxes_getY(&motion_event->pointers[0]);
+
+                        TouchEventType type;
+                        bool valid = true;
+                        switch (masked_action){
+                            case AMOTION_EVENT_ACTION_DOWN:
+                                type = TouchEventType::Down;
+                                break;
+                            case AMOTION_EVENT_ACTION_UP:
+                                type = TouchEventType::Up;
+                                break;
+                            case AMOTION_EVENT_ACTION_MOVE:
+                                type = TouchEventType::Move;
+                                break;
+                            default:
+                                valid = false;
+                                break;
                         }
+                        if(valid) game -> touch_event({x, y}, type);
                     }
                 }
 
