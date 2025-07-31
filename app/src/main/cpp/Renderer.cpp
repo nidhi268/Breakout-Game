@@ -49,7 +49,7 @@ void main() {
 
 constexpr uint8_t WHITE[] = {255, 255, 255, 255};
 
-Renderer::Renderer(android_app *app) {
+Renderer::Renderer(android_app *app, Camera &camera) {
     display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     assert(display);
 
@@ -161,6 +161,10 @@ Renderer::Renderer(android_app *app) {
 
     glDeleteShader(vert);
     glDeleteShader(frag);
+
+    eglQuerySurface(display, surface, EGL_WIDTH, &width);
+    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
+    camera.update_projection(static_cast<float>(width), static_cast<float>(height));
 
     glUseProgram(program);
     glUniform3f(glGetUniformLocation(program, "color"), 1.f, 1.f, 1.f);

@@ -28,7 +28,15 @@ extern "C" {
         app->onAppCmd = on_app_cmd;
         android_app_set_motion_event_filter(app, nullptr);
 
+        auto last = std::chrono::high_resolution_clock::now();
         do {
+
+            auto now = std::chrono::high_resolution_clock::now();
+            auto delta = now - last;
+            last = now;
+
+            float dt = std::chrono::duration_cast<std::chrono::duration<float>>(delta).count();
+
             bool done = false;
             do {
                 android_poll_source *poll_source;
@@ -51,7 +59,9 @@ extern "C" {
                 }
             } while(!done);
 
-            if (!app->userData) continue;
+            if (!app->userData) {
+                continue;
+            }
             auto *game = (Game *) app->userData;
 
             android_input_buffer *input_buffer = android_app_swap_input_buffers(app);
@@ -79,14 +89,15 @@ extern "C" {
                                 valid = false;
                                 break;
                         }
-                        if(valid) game -> touch_event({x, y}, type);
+                        if(valid)
+                            game -> touch_event({x, y}, type);
                     }
                 }
 
                 android_app_clear_motion_events(input_buffer);
             }
 
-            game->update();
+            game->update(dt);
         } while (!app->destroyRequested);
     }
 }

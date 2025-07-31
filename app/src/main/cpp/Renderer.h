@@ -42,7 +42,7 @@ struct RenderData {
 
 class Renderer {
 public:
-    explicit Renderer(android_app *app);
+    explicit Renderer(android_app *app, Camera &camera);
     ~Renderer();
 
     void do_frame(const RenderData &data);
