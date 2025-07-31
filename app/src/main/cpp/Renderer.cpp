@@ -1,10 +1,11 @@
 #include "Renderer.h"
-#include <GLES/egl.h>
-#include <GLES3/gl3.h>
-#include <cassert>
 #include "logging.h"
 #include "glm/glm.hpp"
 #include "glm/gtc/type_ptr.hpp"
+
+#include <GLES/egl.h>
+#include <GLES3/gl3.h>
+#include <cassert>
 #include <vector>
 
 #define STB_RECT_PACK_IMPLEMENTATION
@@ -21,12 +22,12 @@ layout (location = 1) in vec2 a_tex_coords;
 
 out vec2 tex_coords;
 
-uniform mat4 projection;
+uniform mat4 projview;
 uniform mat4 model;
 uniform vec2 custom_tex_coords[2];
 
 void main() {
-    gl_Position = projection * model * vec4(a_pos, 0.0, 1.0);
+    gl_Position = projview * model * vec4(a_pos, 0.0, 1.0);
     tex_coords = a_tex_coords * custom_tex_coords[1] + (1.0 - a_tex_coords) * custom_tex_coords[0];
 }
 )";
@@ -165,7 +166,7 @@ Renderer::Renderer(android_app *app) {
     glUniform1i(glGetUniformLocation(program, "tex"), 0);
     glActiveTexture(GL_TEXTURE0);
 
-    projection_location = glGetUniformLocation(program, "projection");
+    projview_location = glGetUniformLocation(program, "projview");
     model_location = glGetUniformLocation(program, "model");
     custom_tex_coords_location = glGetUniformLocation(program, "custom_tex_coords");
 
@@ -236,7 +237,7 @@ Renderer::~Renderer(){
     eglTerminate(display);
 }
 
-void Renderer::do_frame(const std::vector<DrawCommand> &cmds, const std::vector<TextCommand> &text_cmds) {
+void Renderer::do_frame(const RenderData &data) {
     auto draw_char = [&](unsigned char c, float text_size, glm::vec2 position,
                         glm::vec4 color, glm::vec2 &cursor_pos){
         if (c <= 32 || c > 127){
@@ -306,9 +307,15 @@ void Renderer::do_frame(const std::vector<DrawCommand> &cmds, const std::vector<
     // clears screen - to yellow a set in glClearColor
     glClear(GL_COLOR_BUFFER_BIT);
 
+    data.camera.update_projection(static_cast<float>(width), static_cast<float>(height));
+    data.camera.update_view();
+
+    auto projview = data.camera.get_projection() * data.camera.get_view();
+    glUniformMatrix4fv(projview_location, 1, GL_FALSE, glm::value_ptr(projview));
+
     if (font.loaded){
         glBindTexture(GL_TEXTURE_2D, font.texture->get_id());
-        for (const auto &text : text_cmds){
+        for (const auto &text : data.text_cmds){
             auto size = get_text_size(text.size, text.str);
             glm::vec2 cursor_pos{};
 
@@ -335,14 +342,9 @@ void Renderer::do_frame(const std::vector<DrawCommand> &cmds, const std::vector<
         }
     }
 
-    float inv_aspect = (float) height/(float) width;
-    //sets projection matrix type
-    projection = glm::ortho(-1.f, 1.f, -inv_aspect, inv_aspect);
-    glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
-
     glm::vec2 default_tex_coords[2] = {{0.f, 0.f}, {1.f, 1.f}};
     glUniform2fv(custom_tex_coords_location, 2, glm::value_ptr(default_tex_coords[0]));
-    for (const auto &cmd: cmds){
+    for (const auto &cmd: data.draw_cmds){
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(cmd.transformation));
         glBindTexture(GL_TEXTURE_2D, cmd.texture ? cmd.texture->get_id() : white->get_id());
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
