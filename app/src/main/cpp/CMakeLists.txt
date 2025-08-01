@@ -13,6 +13,9 @@ add_library(breakoutgame SHARED
         main.cpp
         Renderer.cpp
         Texture.cpp
+        Game.cpp
+        #Game_withsinglecallfor_bricks.cpp
+        #Renderer_withsinglecall_for_bricks.cpp
 )
 
 add_subdirectory(glm)
