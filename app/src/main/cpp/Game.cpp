@@ -49,6 +49,7 @@ void Game::update(float dt) {
     }
 
     auto end = std::remove_if(objects.begin(), objects.end(), [&](auto &obj){return state.to_delete.count(&obj) ==1;});
+    objects.erase(end, objects.end());
     renderer.do_frame(data);
 }
 
